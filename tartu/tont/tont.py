@@ -2,7 +2,7 @@
 
 
 def main():
-    class Tont():
+    class Tont:
         def __init__(self, nimi: str, vanus: int, elukoht: str):
             self.nimi = nimi
             self.vanus = vanus
