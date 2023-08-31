@@ -13,19 +13,40 @@ async def get_list_of_movies(session: ClientSession, base_url: str, dir_path: st
         return await response.json()
 
 
-async def subtitle_action(session: ClientSession, movie: list, action: str, base_url: str, headers: dict, semaphore: Semaphore):
+async def get_ids_of_movies(session: ClientSession, base_url: str, headers: dict) -> list:
+    url = f"{base_url}/api/movies"
+    async with session.get(url, headers=headers) as response:
+        return await response.json()
+
+
+async def subtitle_action(session: ClientSession, movie: list, action: str, base_url: str, headers: dict, semaphore: Semaphore, ids_of_movies: dict):
+    # may god have mercy upon this function...
     async with semaphore:
         print(f"Syncing subs for movie: {movie['name']}")
         tasks = []
-        for _, _, file in walk(movie["path"]):
+        for true_path, _, file in walk(movie["path"]):
+            subtitle_path = None
+            radarrId = None
+            final_path = None
             for filename in file:
+                if "sample" not in filename and filename.endswith(".mkv") or filename.endswith(".mp4"):
+                    movie_path = path.join(movie["path"], filename)
+                    for test in ids_of_movies["data"]:
+                        if movie_path == test["path"]:
+                            radarrId = test["radarrId"]
+
                 if filename.endswith("en.srt"):
-                    final_path = path.join(movie["path"], filename)
-                    url = f"{base_url}/api/subtitles?action={action}&language=en&path={final_path}&type=movie&id=1"
-                    task = create_task(send_patch(session, url, headers))
-                    tasks.append(task)
-            await gather(*tasks)
-            print(f"Finished syncing subs for movie: {movie['name']}")
+                    subtitle_path = path.join(movie["path"], filename)
+
+                if subtitle_path is None or radarrId is None:
+                    continue
+                final_path = f"{base_url}/api/subtitles?action={action}&language=en&path={subtitle_path}&type=movie&id={radarrId}"
+            if final_path is not None:
+                print(final_path)
+                task = create_task(send_patch(session, final_path, headers))
+                tasks.append(task)
+                await gather(*tasks)
+                print(f"Finished syncing subs for movie: {movie['name']}")
 
 
 async def is_synced(url):
@@ -60,8 +81,9 @@ async def main():
 
         async with ClientSession() as session:
             list_of_movies = await get_list_of_movies(session, base_url, dir_path, headers)
-            semaphore = Semaphore(3)
-            tasks = [subtitle_action(session, movie, "sync", base_url, headers, semaphore) for movie in list_of_movies]
+            ids_of_movies = await get_ids_of_movies(session, base_url, headers)
+            semaphore = Semaphore(1)
+            tasks = [subtitle_action(session, movie, "sync", base_url, headers, semaphore, ids_of_movies) for movie in list_of_movies]
             await gather(*tasks)
     except IndexError:
         print("Error... Supply three arguments: api key, base_url and the directory.")
