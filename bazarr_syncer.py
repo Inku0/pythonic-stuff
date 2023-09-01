@@ -49,15 +49,15 @@ async def subtitle_action(session: ClientSession, movie: list, action: str, base
                 print(f"Finished syncing subs for movie: {movie['name']}")
 
 
-async def is_synced(url):
-    async with open("synced", "r") as sync_file:
+async def is_synced(url, filename):
+    async with open(filename, "r") as sync_file:
         contents = await sync_file.read()
         lines = contents.split("\n")
         return url in lines
 
 
-async def append_to_synced_file(url):
-    async with open("synced", "a") as sync_file:
+async def append_to_synced_file(url, filename):
+    async with open(filename, "a") as sync_file:
         await sync_file.write(url + "\n")
 
 
@@ -65,16 +65,13 @@ async def send_patch(session, url, headers):
     async with session.patch(url, headers=headers) as patch:
         print(url)
         print(patch.status)
-        if patch.status == 204 and not await is_synced(url):
-            completed_syncs.add(url)
-            await append_to_synced_file(url)
+        if patch.status == 204 and not await is_synced(url, "synced"):
+            await append_to_synced_file(url, "synced")
         else:
             print(f"Failed for {url}")
 
 
 async def main():
-    global completed_syncs
-    completed_syncs = set()
     try:
         api_key, base_url, dir_path = argv[1:4]
         headers = {"X-API-KEY": api_key, "accept": "application/json"}

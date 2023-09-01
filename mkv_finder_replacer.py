@@ -4,10 +4,12 @@ import ffmpeg
 from sys import argv
 
 
-def main():
-    def get_absolute_path(path: str):
-        return [os.path.join(path, file) for file in os.listdir(path)]
+def get_absolute_path(path: str):
+    absolute_path = [os.path.join(path, file) for file in os.listdir(path)]
+    return absolute_path
 
+
+def main():
     corrupt = []
     movies_path = argv[1]
     sub_movies_path = get_absolute_path(movies_path)
