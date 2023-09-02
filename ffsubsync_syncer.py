@@ -20,7 +20,7 @@ def sync_subtitles(folder, synced_set):
     final_command = None
     for i, j, files in walk(folder):
         for filename in files:
-            if "sample" not in filename and (filename.endswith(".mkv") or filename.endswith(".mp4")):
+            if "sample" not in filename and (filename.endswith(".mkv") or filename.endswith(".mp4") or filename.endswith(".avi")):
                 movie_path = path.join(folder, filename)
             if filename.endswith("en.srt"):
                 subtitle_path = path.join(folder, filename)
