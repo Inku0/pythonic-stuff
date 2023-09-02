@@ -25,7 +25,7 @@ def sync_subtitles(folder, synced_set):
             if filename.endswith("en.srt"):
                 subtitle_path = path.join(folder, filename)
             if subtitle_path is not None and movie_path is not None:
-                final_command = f"pipx run ffsubsync --overwrite-input \"{movie_path}\" -i \"{subtitle_path}\""
+                final_command = f"ffsubsync --overwrite-input \"{movie_path}\" -i \"{subtitle_path}\""
 
     if final_command is not None:
         if not is_synced(movie_path, synced_set):
