@@ -19,34 +19,58 @@ async def get_ids_of_movies(session: ClientSession, base_url: str, headers: dict
         return await response.json()
 
 
-async def subtitle_action(session: ClientSession, movie: list, action: str, base_url: str, headers: dict, semaphore: Semaphore, ids_of_movies: dict):
+async def subtitle_action(
+        session: ClientSession,
+        movie: list,
+        action: str,
+        base_url: str,
+        headers: dict,
+        semaphore: Semaphore,
+        ids_of_movies: dict,
+        language: str,
+        typeof: str
+):
     # may god have mercy upon this function...
     async with semaphore:
-        print(f"Syncing subs for movie: {movie['name']}")
         tasks = []
         for true_path, _, file in walk(movie["path"]):
             subtitle_path = None
             radarrId = None
             final_path = None
+            language_not_found = True
             for filename in file:
                 if "sample" not in filename and filename.endswith(".mkv") or filename.endswith(".mp4"):
                     movie_path = path.join(movie["path"], filename)
                     for test in ids_of_movies["data"]:
                         if movie_path == test["path"]:
                             radarrId = test["radarrId"]
+                            if action == "translate":
+                                for subtitle in test["subtitles"]:
+                                    if language in subtitle["code2"]:
+                                        language_not_found = False
+                                        break
 
                 if filename.endswith("en.srt"):
                     subtitle_path = path.join(movie["path"], filename)
 
                 if subtitle_path is None or radarrId is None:
                     continue
-                final_path = f"{base_url}/api/subtitles?action={action}&language=en&path={subtitle_path}&type=movie&id={radarrId}"
-            if final_path is not None:
+                final_path = f"{base_url}/api/subtitles?action={action}&language={language}&path={subtitle_path}&type={typeof}&id={radarrId}"
+
+        if final_path is not None:
+            if action == "translate" and language_not_found:
+                print(f"{language} for {movie['name']} NOT found")
                 print(final_path)
-                task = create_task(send_patch(session, final_path, headers))
+                task = create_task(send_patch(session, final_path, headers, action))
                 tasks.append(task)
-                await gather(*tasks)
-                print(f"Finished syncing subs for movie: {movie['name']}")
+            elif action == "sync":
+                print(f"{action} for movie: {movie['name']}")
+                print(final_path)
+                task = create_task(send_patch(session, final_path, headers, action))
+                tasks.append(task)
+                print(f"Finished {action} for movie: {movie['name']}")
+
+        await gather(*tasks)
 
 
 async def is_synced(url, filename):
@@ -57,16 +81,14 @@ async def is_synced(url, filename):
 
 
 async def append_to_synced_file(url, filename):
-    async with open(filename, "a") as sync_file:
+    async with open(filename, "a+") as sync_file:
         await sync_file.write(url + "\n")
 
 
-async def send_patch(session, url, headers):
+async def send_patch(session, url, headers, filename):
     async with session.patch(url, headers=headers) as patch:
-        print(url)
-        print(patch.status)
-        if patch.status == 204 and not await is_synced(url, "synced"):
-            await append_to_synced_file(url, "synced")
+        if patch.status == 204 and not await is_synced(url, filename):
+            await append_to_synced_file(url, filename)
         else:
             print(f"Failed for {url}")
 
@@ -80,7 +102,17 @@ async def main():
             list_of_movies = await get_list_of_movies(session, base_url, dir_path, headers)
             ids_of_movies = await get_ids_of_movies(session, base_url, headers)
             semaphore = Semaphore(1)
-            tasks = [subtitle_action(session, movie, "sync", base_url, headers, semaphore, ids_of_movies) for movie in list_of_movies]
+            tasks = [subtitle_action(
+                session,
+                movie,
+                "sync",
+                base_url,
+                headers,
+                semaphore,
+                ids_of_movies,
+                "en",
+                "movie"
+            ) for movie in list_of_movies]
             await gather(*tasks)
     except IndexError:
         print("Error... Supply three arguments: api key, base_url and the directory.")
