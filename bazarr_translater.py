@@ -14,6 +14,7 @@ async def main():
         async with ClientSession() as session:
             list_of_movies = await bazarr_syncer.get_list_of_movies(session, base_url, dir_path, headers)
             ids_of_movies = await bazarr_syncer.get_ids_of_movies(session, base_url, headers)
+            ids_of_shows = await bazarr_syncer.get_ids_of_shows(session, base_url, headers)
             semaphore = Semaphore(3)
             tasks = [bazarr_syncer.subtitle_action(
                 session,
@@ -22,8 +23,8 @@ async def main():
                 base_url,
                 headers,
                 semaphore,
-                ids_of_movies,
-                "fr",
+                ids_of_shows,
+                "sv",
                 "movie"
             ) for movie in list_of_movies]
             await gather(*tasks)
