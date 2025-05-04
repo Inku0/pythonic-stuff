@@ -9,7 +9,7 @@ from shutil import copy2
 from json import dump,load
 from PTN import parse
 from time import time
-from fuzzysearch import find_near_matches
+from rapidfuzz import fuzz
 from fnmatch import fnmatch
 
 
@@ -96,10 +96,15 @@ class ArchifskaQBitClient:
                 try:
                     file_info = stat(full_path)
                     inode = file_info.st_ino
-                    if rar_lock and f.endswith((".mkv", ".mk3d", ".mp4", ".avi", ".m4v", ".mov", ".qt", ".wmv", ".asf",
+                    if rar_lock == "locked" and f.endswith((".mkv", ".mk3d", ".mp4", ".avi", ".m4v", ".mov", ".qt", ".wmv", ".asf",
                                                 ".flv", ".webm", ".m4a", ".mp3", ".aac", ".ogg", ".opus", ".m2ts",
                                                 ".mts", ".m2v", ".m4v", ".3gp")):
                         respective_qbit_file = None
+                        structure[root]["files"][f] = {
+                            "path": full_path,
+                            "inode": inode,
+                            "qbit_file": respective_qbit_file,
+                        }
                         continue
                     elif qbit_path is not None:
                         if path.isdir(qbit_path):
@@ -111,9 +116,9 @@ class ArchifskaQBitClient:
                                 elif rar_lock == "dunno":
                                     if (any(qbit_file.endswith(".rar") for qbit_file in qbit_files) and
                                           len([qbit_file for qbit_file in qbit_files if fnmatch(qbit_file, ".r*")]) > 3):
-                                        rar_lock = True
+                                        rar_lock = "locked"
                                     else:
-                                        rar_lock = False
+                                        rar_lock = "unlocked"
                                 for qbit_file in qbit_files:
                                     if stat(path.join(qbit_root, qbit_file)).st_ino == inode and stat(
                                             path.join(qbit_root, qbit_file)).st_size == file_info.st_size:
@@ -334,12 +339,12 @@ class StarrUpdater:
                 )
                 series = sonarr.get_series()
                 for show in series:
-                    if find_near_matches(title, show["title"], max_l_dist=5):
+                    if fuzz.ratio(title, show["title"]) > 65:
                         logger.info(f"found {title} in sonarr: {show['title']}")
                         return show["id"]
                     else:
                         for alt_title in show["alternateTitles"]:
-                            if find_near_matches(title, alt_title["title"], max_l_dist=5):
+                            if fuzz.ratio(title, alt_title["title"]) > 65:
                                 logger.info(f"found {title} in sonarr: {show['title']}")
                                 return show["id"]
                 if not ignore_errors:
@@ -351,12 +356,12 @@ class StarrUpdater:
                 )
                 movies = radarr.get_movie()
                 for movie in movies:
-                    if find_near_matches(title, movie["originalTitle"], max_l_dist=5) or find_near_matches(title, movie["title"], max_l_dist=5):
+                    if fuzz.ratio(title, movie["originalTitle"]) > 65 or fuzz.ratio(title, movie["title"]) > 65:
                         logger.info(f"found {title} in radarr: {movie['originalTitle']}")
                         return movie["id"]
                     else:
                         for alt_title in movie["alternateTitles"]:
-                            if find_near_matches(title, alt_title["title"], max_l_dist=5):
+                            if fuzz.ratio(title, alt_title["title"]) > 65:
                                 logger.info(f"found {title} in radarr: {movie['originalTitle']}")
                                 return movie["id"]
                 if not ignore_errors:
