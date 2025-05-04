@@ -334,10 +334,14 @@ class StarrUpdater:
                 )
                 series = sonarr.get_series()
                 for show in series:
-                    for alt_title in show["alternateTitles"]:
-                        if find_near_matches(title, alt_title["title"], max_l_dist=5):
-                            logger.info(f"found {title} in sonarr: {show['originalTitle']}")
-                            return show["id"]
+                    if find_near_matches(title, show["title"], max_l_dist=5):
+                        logger.info(f"found {title} in sonarr: {show['title']}")
+                        return show["id"]
+                    else:
+                        for alt_title in show["alternateTitles"]:
+                            if find_near_matches(title, alt_title["title"], max_l_dist=5):
+                                logger.info(f"found {title} in sonarr: {show['title']}")
+                                return show["id"]
                 if not ignore_errors:
                     logger.error(f"media {title} not found in sonarr")
                 return None
@@ -347,10 +351,14 @@ class StarrUpdater:
                 )
                 movies = radarr.get_movie()
                 for movie in movies:
-                    for alt_title in movie["alternateTitles"]:
-                        if find_near_matches(title, alt_title["title"], max_l_dist=5):
-                            logger.info(f"found {title} in radarr: {movie['originalTitle']}")
-                            return movie["id"]
+                    if find_near_matches(title, movie["originalTitle"], max_l_dist=5) or find_near_matches(title, movie["title"], max_l_dist=5):
+                        logger.info(f"found {title} in radarr: {movie['originalTitle']}")
+                        return movie["id"]
+                    else:
+                        for alt_title in movie["alternateTitles"]:
+                            if find_near_matches(title, alt_title["title"], max_l_dist=5):
+                                logger.info(f"found {title} in radarr: {movie['originalTitle']}")
+                                return movie["id"]
                 if not ignore_errors:
                     logger.error(f"media {title} not found in radarr")
                 return None
