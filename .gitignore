@@ -165,3 +165,7 @@ ffsubsynced
 synced
 sync
 translate
+
+testing/
+
+*.prof
