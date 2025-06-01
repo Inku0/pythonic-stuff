@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from os import scandir, rmdir, DirEntry
+from os import scandir, DirEntry
 from os.path import isdir
+from shutil import rmtree
 
 
 def check_dir_lacking(directory: str) -> bool:
@@ -68,5 +69,5 @@ def run(directory: str, delete: bool = False) -> None:
                 print(f"Error checking {entry}: {e}")
     if delete:
         for directory in final_list:
-            rmdir(directory)
+            rmtree(directory)
     print(f'{"deleted" if delete else "want to delete"} {len(final_list)} directories: {final_list}')
