@@ -169,3 +169,5 @@ translate
 testing/
 
 *.prof
+
+*.bak

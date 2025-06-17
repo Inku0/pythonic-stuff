@@ -8,7 +8,7 @@ if __name__ == "__main__":
     def all_in_one():
         qbit = utils.ArchifskaQBitClient(creds["QBIT_HOST"], creds["QBIT_PORT"], creds["QBIT_USERNAME"], creds["QBIT_PASSWORD"])
         qbit.connect()
-        candidate = qbit.get_candidate("movies")[0]
+        candidate = qbit.get_candidate()[0]
         print(candidate.name)
         torrent_hash = candidate.infohash_v1
         torrent_category = candidate.category
