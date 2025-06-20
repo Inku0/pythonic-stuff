@@ -40,10 +40,10 @@ if __name__ == "__main__":
             qbit.save_structure(original_location=original_location, save_file="struc.json", torrent_hashes=torrent_hashes)
 
             # this stuff below is fragile, new_location shouldn't be hardcoded
-            #qbit.move_torrent(torrent_hashes=torrent_hashes, new_location=f"/megafarm/torrents/{torrent_category}")
+            qbit.move_torrent(torrent_hashes=torrent_hashes, new_location=f"/megafarm/torrents/{torrent_category}")
             general_original_location = f"/data/media/{torrent_category}"
-            #qbit.recreate_structure(original_location=general_original_location, new_location=f"/megafarm/media/{torrent_category}", save_file="struc.json", torrent_hashes=torrent_hashes)
-            #qbit.let_starr_know(category=torrent_category, media_id=id_and_location_tuple[0], new_location=f"/megafarm/media/{torrent_category}")
+            qbit.recreate_structure(original_location=general_original_location, new_location=f"/megafarm/media/{torrent_category}", save_file="struc.json", torrent_hashes=torrent_hashes)
+            qbit.let_starr_know(category=torrent_category, media_id=id_and_location_tuple[0], new_location=f"/megafarm/media/{torrent_category}")
             qbit.close()
         all_in_one()
         pr.dump_stats("benchmark.prof")

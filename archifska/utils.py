@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from time import sleep
 from qbittorrentapi import Client, LoginFailed, exceptions, TorrentInfoList, TorrentDictionary
 from logging import basicConfig, getLogger, ERROR, INFO, DEBUG
@@ -136,9 +137,9 @@ class ArchifskaQBitClient:
             qbit_structure.update(self.qbit_path_inoder(qbit_path))
 
         rar_lock = self.rar_lock_check(all_files)
-        logger.info(f"rar_lock is set to {rar_lock} !")
+        logger.debug(f"rar_lock is set to {rar_lock} !")
 
-        logger.info(f"qbit_structure is {qbit_structure}")
+        logger.debug(f"qbit_structure is {qbit_structure}")
 
         for root, dirs, files in walk(original_location):
             basename = path.basename(root)
@@ -253,40 +254,49 @@ class ArchifskaQBitClient:
         else:
             self.filtered_torrents = [torrent for torrent in self.all_torrents if torrent.category == category]
 
+    def season_counter(self, seasons: list[TorrentDictionary]) -> int:
+        actual_seasons = []
+        for season in seasons:
+            if parse(season.name)["season"] not in actual_seasons:
+                actual_seasons.append(parse(season.name)["season"])
+        return len(actual_seasons)
+
+    def check_similarity(self, given_torrent: TorrentDictionary, other_torrent: TorrentDictionary) -> bool:
+        ratio = fuzz.ratio(given_torrent.name, other_torrent.name)
+        logger.debug(f"fuzz ratio for {given_torrent.name} and {other_torrent.name} is {ratio}")
+        return ratio > 50 and parse(given_torrent.name)["title"] == parse(other_torrent.name)["title"]
+
     def check_for_other_seasons(self, given_torrent: TorrentDictionary) -> list[TorrentDictionary]:
         # check if there are other seasons of the same show in the torrent list
-
         if given_torrent.category != "tv":
             logger.info("not a tv show, skipping season check")
             return [given_torrent]
 
         seasons = []
-        for torrent in self.all_torrents:
-            logger.debug(f"given torrent name: {given_torrent.name}, torrent name: {torrent.name}")
-            logger.debug(f"{fuzz.ratio(given_torrent.name, torrent.name)} vs 50")
-            logger.debug(f"parse(given_torrent.name): {parse(given_torrent.name)}, parse(torrent.name): {parse(torrent.name)}")
-            if fuzz.ratio(given_torrent.name, torrent.name) > 50 and parse(given_torrent.name)["title"] == parse(torrent.name)["title"]:
-                logger.debug(f"found a season match: {torrent.name} for {given_torrent.name}")
-                seasons.append(torrent)
+        # use multithreading for better speed with many torrents
+        with ThreadPoolExecutor() as pool:
+            futures = {pool.submit(self.check_similarity, given_torrent, torrent): torrent for torrent in self.filtered_torrents}
+            for future in as_completed(futures):
+                entry = futures[future]
+                try:
+                    if future.result():
+                        seasons.append(entry)
+                except Exception as e:
+                    print(f"error checking {entry}: {e}")
 
         # combine episodes into seasons
-        actual_seasons = []
-        for season in seasons:
-            if parse(season.name)["season"] not in actual_seasons:
-                actual_seasons.append(parse(season.name)["season"])
-        actual_seasons_amount = len(actual_seasons)
-
-        logger.info(f"found {actual_seasons_amount} seasons for {given_torrent.name}: {seasons}")
+        actual_seasons_amount = self.season_counter(seasons)
+        logger.debug(f"found {actual_seasons_amount} seasons for {given_torrent.name}: {seasons}")
 
         id = self.extract_id_and_path(given_torrent.name, category="tv")[0]
-
         sonarr_seasons = StarrUpdater(host=self.creds["SONARR_HOST"], port=self.creds["SONARR_PORT"],
                                     api_key=self.creds["SONARR_API_KEY"], service="sonarr").get_seasons(id)
+        logger.debug(f"sonarr seasons for ID {id} are: {sonarr_seasons}")
 
-        logger.info(f"sonarr seasons for ID {id} are: {sonarr_seasons}")
-
+        # only get seasons that actually have episodes
         monitored_seasons = [season for season in sonarr_seasons if season["monitored"] == True and season["statistics"]["episodeFileCount"] > 0]
 
+        # sanity check
         if len(monitored_seasons) == actual_seasons_amount:
             logger.info(f"amount of seasons in sonarr ({len(monitored_seasons)}) matches amount of seasons in torrent list ({actual_seasons_amount})")
             return seasons
@@ -294,8 +304,6 @@ class ArchifskaQBitClient:
             raise ValueError(f"amount of seasons in sonarr ({len(monitored_seasons)}) does not match amount of seasons in torrent list ({actual_seasons_amount})")
 
     def get_candidates(self, category: str = None) -> list[TorrentDictionary]:
-        # TODO: handle single-file tv torrents
-
         if category is not None:
             logger.info(f"getting candidates for category {category}")
             self.list_torrents(category=category)
@@ -307,7 +315,7 @@ class ArchifskaQBitClient:
         logger.debug(f"all candidates: {[torrent.name for torrent in self.filtered_torrents]}")
 
         torrents = self.check_for_other_seasons(prime_candidate) if prime_candidate.category == "tv" else None
-        logger.info(f"after season check, {len(torrents)} candidates left: {[torrent.name for torrent in torrents]}")
+        logger.debug(f"after season check, {len(torrents)} candidates left: {[torrent.name for torrent in torrents]}")
 
         return torrents
 
@@ -448,6 +456,7 @@ class StarrUpdater:
             case _:
                 logger.error(f"unknown service: {self.service}")
                 return None
+
     def get_path(self, media_id: int) -> str | None:
         # get the path of the media (by id)
         match self.service:
@@ -466,38 +475,22 @@ class StarrUpdater:
             case _:
                 logger.error(f"unknown service: {self.service}")
                 return None
+
+    def is_archifskad(self, media_path: str):
+        return True if "megafarm" in media_path else False
+
     def update_path(self, media_id: int, new_location: str):
-
         # check that the media isn't already archifskad (HARDCODED ATM)
-        def is_archifskad(media_path: str):
-            return True if "megafarm" in media_path else False
-
-        match self.service:
-            case "sonarr":
-                sonarr = SonarrAPI(
+        runner = SonarrAPI(
+                    self.host_url, self.api_key,
+                ) if self.service == "sonarr" else RadarrAPI(
                     self.host_url, self.api_key,
                 )
-                media = sonarr.get_series(media_id)
-                if is_archifskad(media["path"]):
-                    logger.error(f"media {media_id} is already archifskad")
-                    return
-                else:
-                    logger.info(f"archifsking {media_id}, new path is {new_location + "/" + path.basename(media["path"])}")
-                    media["path"] = new_location + f"/{path.basename(media["path"])}"
-                    sonarr.upd_series(media)
-
-            case "radarr":
-                radarr = RadarrAPI(
-                    self.host_url, self.api_key,
-                )
-                media = radarr.get_movie(media_id)
-                if is_archifskad(media["path"]):
-                    logger.error(f"media {media_id} is already archifskad")
-                    return
-                else:
-                    logger.info(f"archifsking {media_id} ")
-                    media["path"] = new_location + f"/{path.basename(media["path"])}"
-                    radarr.upd_movie(media)
-            case _:
-                logger.error(f"unknown service: {self.service}")
-                return
+        media = runner.get_series(media_id) if self.service == "sonarr" else runner.get_movie(media_id)
+        if self.is_archifskad(media["path"]):
+            logger.error(f"media {media_id} is already archifskad")
+            return
+        # update the path of the media (by id)
+        logger.info(f"updating path for media {media_id} to {new_location}")
+        media["path"] = new_location + f"/{path.basename(media["path"])}"
+        runner.upd_series(media) if self.service == "sonarr" else runner.upd_movie(media)
