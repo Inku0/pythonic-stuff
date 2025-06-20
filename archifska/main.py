@@ -14,16 +14,19 @@ if __name__ == "__main__":
             raise ValueError("No candidates found.")
         elif len(candidates) > 1:
             torrent_category = candidates[0].category if candidates[0].category == candidates[1].category else None
+            id_and_location_tuple = qbit.extract_id_and_path(candidates[0].name, torrent_category) if (
+                qbit.extract_id_and_path(candidates[0].name, torrent_category)[0] ==
+                qbit.extract_id_and_path(candidates[1].name, torrent_category)[0]
+            ) else None
         else:
             torrent_category = candidates[0].category
+            id_and_location_tuple = qbit.extract_id_and_path(candidates[0].name, torrent_category)
 
         original_location = None
         torrent_hashes = []
 
         for candidate in candidates:
             torrent_hash = candidate.infohash_v1
-
-            id_and_location_tuple = qbit.extract_id_and_path(candidate.name, torrent_category)
 
             torrent_hashes.append(torrent_hash)
 

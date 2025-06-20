@@ -1,6 +1,6 @@
 from time import sleep
 from qbittorrentapi import Client, LoginFailed, exceptions, TorrentInfoList, TorrentDictionary
-from logging import basicConfig, getLogger, ERROR, INFO
+from logging import basicConfig, getLogger, ERROR, INFO, DEBUG
 from sys import argv
 from pyarr import SonarrAPI
 from pyarr import RadarrAPI
@@ -42,6 +42,9 @@ class ArchifskaQBitClient:
             VERIFY_WEBUI_CERTIFICATE=False,
             REQUESTS_ARGS={'timeout': (360, 360)},
         )
+
+        self.all_torrents = []
+        self.filtered_torrents = []
 
     def connect(self) -> bool:
         # connect to the web api
@@ -235,68 +238,75 @@ class ArchifskaQBitClient:
         with open("RECHECK_THESE", "a") as recheck_file:
             recheck_file.write(str(weirdoes)) if weirdoes else None
 
-    def list_torrents(self, category: str = None) -> TorrentInfoList:
+    def list_torrents(self, category: str = None) -> None:
         # list all torrents
-        torrents = self.client.torrents_info("all", category, "completion_on")
-        for torrent in torrents:
-            logger.info(f"Torrent: {torrent.name}, Age: {torrent.completion_on}, content_path: {torrent.content_path}, Hash: {torrent.hash}, State: {torrent.state}")
-        return torrents
+        self.all_torrents = self.client.torrents_info("all", None, "completion_on")
 
-    def check_for_other_seasons(self, torrent_list: list) -> list[TorrentDictionary]:
+        # default?
+        if category is None: # shouldn't prolly hardcode the following, gotta acommodate other services too?
+            movies = [torrent for torrent in self.all_torrents if torrent.category == "movies"]
+            tv = [torrent for torrent in self.all_torrents if torrent.category == "tv"]
+            self.filtered_torrents = movies + tv
+
+            self.filtered_torrents.sort(key=lambda x: x.completion_on)
+
+        else:
+            self.filtered_torrents = [torrent for torrent in self.all_torrents if torrent.category == category]
+
+    def check_for_other_seasons(self, given_torrent: TorrentDictionary) -> list[TorrentDictionary]:
         # check if there are other seasons of the same show in the torrent list
 
-        if torrent_list[0].category != "tv":
+        if given_torrent.category != "tv":
             logger.info("not a tv show, skipping season check")
-            return torrent_list[:1]
+            return [given_torrent]
 
         seasons = []
-        for torrent in torrent_list:
-            logger.debug(f"checking {torrent.name} against {torrent_list[0].name}")
-            if fuzz.ratio(torrent_list[0].name, torrent.name) > 85:
+        for torrent in self.all_torrents:
+            logger.debug(f"given torrent name: {given_torrent.name}, torrent name: {torrent.name}")
+            logger.debug(f"{fuzz.ratio(given_torrent.name, torrent.name)} vs 50")
+            logger.debug(f"parse(given_torrent.name): {parse(given_torrent.name)}, parse(torrent.name): {parse(torrent.name)}")
+            if fuzz.ratio(given_torrent.name, torrent.name) > 50 and parse(given_torrent.name)["title"] == parse(torrent.name)["title"]:
+                logger.debug(f"found a season match: {torrent.name} for {given_torrent.name}")
                 seasons.append(torrent)
-        logger.info(f"found {len(seasons)} seasons for {torrent_list[0].name}: {seasons}")
 
-        id = self.extract_id_and_path(torrent_list[0].name, category="tv")[0]
+        # combine episodes into seasons
+        actual_seasons = []
+        for season in seasons:
+            if parse(season.name)["season"] not in actual_seasons:
+                actual_seasons.append(parse(season.name)["season"])
+        actual_seasons_amount = len(actual_seasons)
+
+        logger.info(f"found {actual_seasons_amount} seasons for {given_torrent.name}: {seasons}")
+
+        id = self.extract_id_and_path(given_torrent.name, category="tv")[0]
 
         sonarr_seasons = StarrUpdater(host=self.creds["SONARR_HOST"], port=self.creds["SONARR_PORT"],
                                     api_key=self.creds["SONARR_API_KEY"], service="sonarr").get_seasons(id)
 
         logger.info(f"sonarr seasons for ID {id} are: {sonarr_seasons}")
 
-        monitored_seasons = [season for season in sonarr_seasons if season["monitored"] == True]
+        monitored_seasons = [season for season in sonarr_seasons if season["monitored"] == True and season["statistics"]["episodeFileCount"] > 0]
 
-        if len(monitored_seasons) == len(seasons):
-            logger.info(f"amount of seasons in sonarr ({len(monitored_seasons)}) matches amount of seasons in torrent list ({len(seasons)})")
+        if len(monitored_seasons) == actual_seasons_amount:
+            logger.info(f"amount of seasons in sonarr ({len(monitored_seasons)}) matches amount of seasons in torrent list ({actual_seasons_amount})")
             return seasons
         else:
-            logger.error(f"amount of seasons in sonarr ({len(monitored_seasons)}) does not match amount of seasons in torrent list ({len(seasons)})")
-            raise ValueError(f"amount of seasons in sonarr ({len(monitored_seasons)}) does not match amount of seasons in torrent list ({len(seasons)})")
+            raise ValueError(f"amount of seasons in sonarr ({len(monitored_seasons)}) does not match amount of seasons in torrent list ({actual_seasons_amount})")
 
     def get_candidates(self, category: str = None) -> list[TorrentDictionary]:
         # TODO: handle single-file tv torrents
-        if category is None: # shouldn't prolly hardcode the following, gotta acommodate other services too?
-            movies = [
-                torrent for torrent in self.client.torrents_info("all", "movies", "completion_on")
-                if "megafarm" not in torrent.content_path and (float(time())-float(torrent.completion_on))/(60*60*24) > 90
-            ]
-            tv = [
-                torrent for torrent in self.client.torrents_info("all", "tv", "completion_on")
-                if "megafarm" not in torrent.content_path and (float(time())-float(torrent.completion_on))/(60*60*24) > 90
-            ]
-            torrents = movies + tv
 
+        if category is not None:
+            logger.info(f"getting candidates for category {category}")
+            self.list_torrents(category=category)
         else:
-            torrents = [
-                torrent for torrent in self.client.torrents_info("all", category, "completion_on")
-                if "megafarm" not in torrent.content_path and (float(time())-float(torrent.completion_on))/(60*60*24) > 90
-            ]
+            self.list_torrents()
+        prime_candidate = next(torrent for torrent in self.filtered_torrents if "megafarm" not in torrent.content_path)
 
-        torrents.sort(key=lambda x: x.completion_on)
+        logger.info(f"found {len(self.filtered_torrents)} candidates in total, prime candidate is {prime_candidate.name} with path {prime_candidate.content_path} and age {prime_candidate.completion_on}")
+        logger.debug(f"all candidates: {[torrent.name for torrent in self.filtered_torrents]}")
 
-        logger.info(f"found {len(torrents)} candidates in total, prime candidate is {torrents[0].name} with path {torrents[0].content_path} and age {torrents[0].completion_on}")
-        logger.debug(f"all candidates: {[torrent.name for torrent in torrents]}")
-
-        torrents = self.check_for_other_seasons(torrents) if torrents[0].category == "tv" else None
+        torrents = self.check_for_other_seasons(prime_candidate) if prime_candidate.category == "tv" else None
         logger.info(f"after season check, {len(torrents)} candidates left: {[torrent.name for torrent in torrents]}")
 
         return torrents
@@ -408,12 +418,12 @@ class StarrUpdater:
                 series = sonarr.get_series()
                 for show in series:
                     if fuzz.ratio(title, show["title"]) > 65:
-                        logger.info(f"found {title} in sonarr: {show['title']}")
+                        logger.debug(f"found {title} in sonarr: {show['title']}")
                         return show["id"]
                     else:
                         for alt_title in show["alternateTitles"]:
                             if fuzz.ratio(title, alt_title["title"]) > 65:
-                                logger.info(f"found {title} in sonarr: {show['title']}")
+                                logger.debug(f"found {title} in sonarr: {show['title']}")
                                 return show["id"]
                 if not ignore_errors:
                     logger.error(f"media {title} not found in sonarr")
@@ -425,12 +435,12 @@ class StarrUpdater:
                 movies = radarr.get_movie()
                 for movie in movies:
                     if fuzz.ratio(title, movie["originalTitle"]) > 65 or fuzz.ratio(title, movie["title"]) > 65:
-                        logger.info(f"found {title} in radarr: {movie['originalTitle']}")
+                        logger.debug(f"found {title} in radarr: {movie['originalTitle']}")
                         return movie["id"]
                     else:
                         for alt_title in movie["alternateTitles"]:
                             if fuzz.ratio(title, alt_title["title"]) > 65:
-                                logger.info(f"found {title} in radarr: {movie['originalTitle']}")
+                                logger.debug(f"found {title} in radarr: {movie['originalTitle']}")
                                 return movie["id"]
                 if not ignore_errors:
                     logger.error(f"media {title} not found in radarr")
