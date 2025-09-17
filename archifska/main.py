@@ -63,6 +63,13 @@ def all_in_one(dry_run: bool = False, save_file: str = "struc.json") -> None:
         destination_root = f"{BASE_DEST}/{torrent_category}"
         torrents_target = f"{BASE_TORRENTS}/{torrent_category}"
 
+        # Snapshot the exact media folder structure
+        qbit.save_structure(
+            original_location=media_path,
+            save_file=save_file,
+            torrent_hashes=torrent_hashes,
+        )
+
         if dry_run:
             qbit.logger.info(
                 "----- DRY RUN: Planning actions (no changes will be made) -----"
@@ -71,7 +78,7 @@ def all_in_one(dry_run: bool = False, save_file: str = "struc.json") -> None:
             qbit.logger.info(f"Category: {torrent_category}")
             qbit.logger.info(f"Media resolved: id={media_id}, path={media_path}")
             qbit.logger.info(f"Torrent hashes: {torrent_hashes}")
-            qbit.logger.info(f"Would save structure from: {media_path} -> {save_file}")
+            qbit.logger.info(f"Saved structure from: {media_path} -> {save_file}")
             qbit.logger.info(f"Would move torrents to: {torrents_target}")
             qbit.logger.info(
                 f"Would restore structure: {general_original_location} -> {destination_root} using {save_file}"
@@ -81,13 +88,6 @@ def all_in_one(dry_run: bool = False, save_file: str = "struc.json") -> None:
             )
             qbit.logger.info("----- DRY RUN COMPLETE -----")
             return
-
-        # Snapshot the exact media folder structure
-        qbit.save_structure(
-            original_location=media_path,
-            save_file=save_file,
-            torrent_hashes=torrent_hashes,
-        )
 
         # Move torrents to the new torrents location for the category
         qbit.move_torrent(torrent_hashes=torrent_hashes, new_location=torrents_target)

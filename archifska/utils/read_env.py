@@ -6,6 +6,6 @@ config = dotenv_values(".env")
 
 
 def read_env() -> Mapping[str, str]:
-    if type(config) is not Mapping[str, str]:
+    if config is None:
         raise ValueError("No .env file found or it is empty.")
     return config

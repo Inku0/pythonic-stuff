@@ -463,7 +463,7 @@ class ArchifskaQBitClient:
             other_title = parse(other_torrent.name)["title"]
         except Exception:
             return False
-        return ratio > 50 and given_title == other_title
+        return ratio > 45 and given_title == other_title
 
     def check_for_other_seasons(
         self, given_torrent: TorrentDictionary

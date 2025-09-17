@@ -1,9 +1,15 @@
-from logging import ERROR, basicConfig, getLogger
+from logging import ERROR, DEBUG, INFO, basicConfig, getLogger
+from utils.read_env import read_env
 
 
 def logging_setup():
     try:
-        logging_level = read_env()["LOGGING_LEVEL"]
+        str_logging_level = read_env()["LOGGING_LEVEL"]
+        str_logging_level = str_logging_level.upper()
+        if str_logging_level == "DEBUG":
+            logging_level = DEBUG
+        if str_logging_level == "INFO":
+            logging_level = INFO
     except KeyError:
         print("LOGGING_LEVEL wasn't found in .env")
         logging_level = ERROR
