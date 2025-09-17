@@ -314,7 +314,7 @@ class ArchifskaQBitClient:
         logger.info(f"found {len(self.filtered_torrents)} candidates in total, prime candidate is {prime_candidate.name} with path {prime_candidate.content_path} and age {prime_candidate.completion_on}")
         logger.debug(f"all candidates: {[torrent.name for torrent in self.filtered_torrents]}")
 
-        torrents = self.check_for_other_seasons(prime_candidate) if prime_candidate.category == "tv" else None
+        torrents = self.check_for_other_seasons(prime_candidate) if prime_candidate.category == "tv" else [prime_candidate]
         logger.debug(f"after season check, {len(torrents)} candidates left: {[torrent.name for torrent in torrents]}")
 
         return torrents
