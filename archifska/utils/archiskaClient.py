@@ -463,6 +463,9 @@ class ArchifskaQBitClient:
             other_title = parse(other_torrent.name)["title"]
         except Exception:
             return False
+        if ratio < 50:
+            double_check_ratio = fuzz.ratio(given_title, other_title)
+            return double_check_ratio > 90 and given_title == other_title
         return ratio > 45 and given_title == other_title
 
     def check_for_other_seasons(
@@ -522,7 +525,7 @@ class ArchifskaQBitClient:
         prime_candidate = next(
             torrent
             for torrent in self.filtered_torrents
-            if "megafarm" not in torrent.content_path
+            if "megafarm" not in torrent.content_path and "skip" not in torrent.tags
         )
 
         self.logger.info(
