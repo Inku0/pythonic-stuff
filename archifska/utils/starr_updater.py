@@ -83,7 +83,7 @@ class StarrUpdater:
 
         # initialize API clients
         self.radarr_api: RadarrAPI = RadarrAPI(
-            host_url=self.radarr_host_url, api_key=self.sonarr_api_key
+            host_url=self.radarr_host_url, api_key=self.radarr_api_key
         )
         self.sonarr_api: SonarrAPI = SonarrAPI(
             host_url=self.sonarr_host_url, api_key=self.sonarr_api_key
@@ -142,7 +142,7 @@ class StarrUpdater:
         return "megafarm" in (media_path)
 
     def update_path(
-        self, media_id: MediaID, new_location: str, service: ServiceType
+        self, media_id: MediaID, new_location: Path, service: ServiceType
     ) -> bool:
         """
         Update the path for a media item.
@@ -176,7 +176,7 @@ class StarrUpdater:
                 return False
 
             # create the new path by joining the new location with current basename
-            new_full_path = str(Path(new_location) / Path(current_path).name)
+            new_full_path = str(new_location / Path(current_path).name)
             self.logger.info(f"Updating path for media {media_id} to {new_full_path}")
             media["path"] = new_full_path
 

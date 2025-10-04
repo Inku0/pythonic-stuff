@@ -128,7 +128,7 @@ def all_in_one(dry_run: bool = False, save_file: str = "struc.json") -> None:
 
         # Update the path in the respective *arr service
         result = narchifska.starr_updater.update_path(
-            service=torrent_category, media_id=media_id, new_location=destination_root
+            service=service, media_id=media_id, new_location=destination_root
         )
         if not result:
             narchifska.starr_updater.logger.error(
