@@ -1,3 +1,6 @@
+from enum import Enum
+
+
 class ErrorCode(str, Enum):
     GENERIC = "GENERIC"
     ENV_MISSING = "ENV_MISSING"
