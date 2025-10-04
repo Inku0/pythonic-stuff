@@ -122,9 +122,9 @@ class StarrUpdater:
         """
         match service:
             case "sonarr":
-                return self.sonarr_api.get_series(media_id)
+                return self.sonarr_api.get_series(media_id).get("path")
             case "radarr":
-                return self.radarr_api.get_movie(media_id)
+                return self.radarr_api.get_movie(media_id).get("path")
             case _:
                 raise ValueError(f"Unknown service: {service}")
 
