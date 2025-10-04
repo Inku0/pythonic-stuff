@@ -104,9 +104,12 @@ class StarrUpdater:
         """
 
         episodes_info = self.sonarr_api.get_episode_file(id_=media_id, series=True)
-        print(episodes_info)
 
-        return episodes_info
+        all_episode_paths: list[Path] = [
+            Path(episode["path"]) for episode in episodes_info
+        ]
+
+        return all_episode_paths
 
     def find_id_by_title(self, title: str, service: ServiceType) -> MediaID | None:
         """

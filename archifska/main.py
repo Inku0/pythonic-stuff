@@ -31,7 +31,7 @@ def all_in_one(dry_run: bool = False, save_file: str = "struc.json") -> None:
         if len(candidates) == 0:
             raise ValueError("No candidates found.")
 
-        # Ensure all candidates share the same category
+        # ensure all candidates share the same category
         categories = {t.category for t in candidates}
         if len(categories) != 1:
             raise ValueError(
@@ -75,11 +75,31 @@ def all_in_one(dry_run: bool = False, save_file: str = "struc.json") -> None:
 
         torrent_hashes = [t.hash for t in candidates]
 
+        # get all file paths for a series, get the torrent hashes for all of them,
+        # then check them against the previous results
+        if service == "sonarr":
+            torrent_hash_set = set()
+            series_files = narchifska.starr_updater.find_other_seasons_files(
+                media_id=media_id
+            )
+            for file in series_files:
+                series_file_hash = narchifska.qbit_service.get_hash_by_file_and_title(
+                    file=file,
+                    title=candidates[0].name,
+                )
+                torrent_hash_set.add(series_file_hash)
+            # ensure all series files are covered by the selected torrents
+            missing_hashes = set(torrent_hash_set) - set(torrent_hashes)
+            if missing_hashes:
+                raise ValueError(
+                    f"Selected torrents do not cover all files for series id={media_id}. Missing hashes: {missing_hashes}"
+                )
+
         general_original_location: Path = BASE_SOURCE / torrent_category
         destination_root: Path = BASE_DEST / torrent_category
         torrents_target: Path = BASE_TORRENTS / torrent_category
 
-        # Snapshot the exact media folder structure
+        # snapshot the exact media folder structure
         narchifska.fs_service.save_structure(
             original_location=Path(media_path),
             save_file=Path(save_file),
@@ -111,15 +131,14 @@ def all_in_one(dry_run: bool = False, save_file: str = "struc.json") -> None:
                 f"Would notify *arr to update path: media_id={media_id} -> {destination_root}"
             )
             narchifska.qbit_service.logger.info("----- DRY RUN COMPLETE -----")
-            narchifska.starr_updater.find_other_seasons_files(media_id)
             return
 
-        # Move torrents to the new torrents location for the category
+        # move torrents to the new torrents location for the category
         narchifska.qbit_service.move_torrent(
             torrent_hashes=torrent_hashes, new_location=torrents_target
         )
 
-        # Restore (link/copy) structure from the general category root into destination root
+        # restore (link/copy) structure from the general category root into destination root
         narchifska.fs_service.restore_structure(
             original_location=general_original_location,
             new_location=destination_root,
@@ -127,7 +146,7 @@ def all_in_one(dry_run: bool = False, save_file: str = "struc.json") -> None:
             torrent_hashes=torrent_hashes,
         )
 
-        # Update the path in the respective *arr service
+        # update the path in the respective *arr service
         result = narchifska.starr_updater.update_path(
             service=service, media_id=media_id, new_location=destination_root
         )

@@ -446,26 +446,32 @@ class QBittorrentService:
             return double_check_ratio > 90 and given_title == other_title
         return ratio > 45 and given_title == other_title
 
-    def get_hash(self, file_name: str) -> str:
+    def get_hash_by_file_and_title(self, file: Path, title: str) -> str:
         """
-        Find a torrent hash by partial name match.
+        Find a torrent hash by fuzzy matching names and files.
 
         Args:
-            file_name: Substring to match against torrent names
+            file: filename to match against torrent content
+            title: title to be fuzzy matched against torrent titles
 
         Returns:
             str: The hash of the matched torrent
 
         Raises:
-            TorrentNotFoundError: If no torrent matches the file_name
+            TorrentNotFoundError: If no torrent matches found
         """
         torrents: TorrentInfoList = self.client.torrents_info()
         for torrent in torrents:
-            if file_name in torrent.name:
+            if fuzz.ratio(title, torrent.name) > 50:
+                for root, _, files in walk(torrent.content_path):
+                    if file.name in files:
+                        self.logger.debug(
+                            f"Fuzzy matched {file_name} to {torrent.name} with ratio {fuzz.ratio(file.name, torrent.name)}"
+                        )
                 return torrent.hash
         from utils.narchifska_errors import TorrentNotFoundError
 
-        raise TorrentNotFoundError(f"torrent containing '{file_name}' not found")
+        raise TorrentNotFoundError(f"torrent containing '{file.name}' not found")
 
     def check_for_other_seasons(
         self, given_torrent: TorrentDictionary
