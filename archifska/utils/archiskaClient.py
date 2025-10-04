@@ -23,9 +23,9 @@ from qbittorrentapi import (
 )
 from rapidfuzz import fuzz
 
-from utils.loggingSetup import logging_setup
+from utils.logging_setup import logging_setup
 from utils.read_env import read_env
-from utils.starrUpdater import StarrUpdater
+from utils.StarrUpdater import StarrUpdater
 
 MEDIA_EXTENSIONS = {
     ".mkv",
@@ -56,6 +56,12 @@ class FileEntry:
     path: str
     inode: int | str | None
     qbit_file: str | None
+
+
+@dataclass(frozen=True)
+class ExtTorrDict:
+    is_rarlocked: bool
+    torrent: TorrentDictionary
 
 
 class ArchifskaQBitClient:
@@ -183,7 +189,7 @@ class ArchifskaQBitClient:
 
     @staticmethod
     def _invert_inode_map(inode_map: dict[str, int]) -> dict[int, str]:
-        # if duplicates exist, last one wins; it's acceptable for our use-case
+        # if duplicates exist, last one wins
         return {inode: file_path for file_path, inode in inode_map.items()}
 
     @staticmethod
@@ -227,6 +233,8 @@ class ArchifskaQBitClient:
 
         _, qbit_paths = self.get_paths_torrents_by_hash(torrent_hashes)
 
+        # TODO: add rar_lock tag per torrent
+
         all_qbit_files: list[str] = []
         qbit_structure: dict[str, int] = {}
         for qbit_path in qbit_paths:
@@ -262,6 +270,8 @@ class ArchifskaQBitClient:
                 inode_value: int | str | None
 
                 # If rar lock is engaged and the file looks like media, mark it as non-qbit
+                # TODO: only set for the rar_locked torrent
+                # do this by finding the torrent related to the file?
                 if rar_lock and self._is_media_file(fname):
                     inode_value = self._safe_stat_inode(full_path)
                     structure[root]["files"][fname] = asdict(

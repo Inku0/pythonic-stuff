@@ -14,10 +14,10 @@ if str(ARCHIFSKA_ROOT) not in sys.path:
     sys.path.insert(0, str(ARCHIFSKA_ROOT))
 
 # Import modules under test after adjusting sys.path
+from utils import StarrUpdater as su_mod  # module for monkeypatching
 from utils import archiskaClient as ac_mod  # module for monkeypatching
-from utils import starrUpdater as su_mod  # module for monkeypatching
 from utils.archiskaClient import ArchifskaQBitClient
-from utils.starrUpdater import StarrUpdater, _build_base_url
+from utils.StarrUpdater import StarrUpdater, _build_base_url
 
 
 # -----------------------

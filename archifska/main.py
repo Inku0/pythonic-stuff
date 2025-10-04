@@ -54,7 +54,7 @@ def all_in_one(dry_run: bool = False, save_file: str = "struc.json") -> None:
             if check_id != media_id or check_path != media_path:
                 raise ValueError(
                     "All candidates must resolve to the same media. "
-                    f"Expected ({media_id}, {media_path}), got ({check_id}, {check_path}) for {t.name}"
+                    + f"Expected ({media_id}, {media_path}), got ({check_id}, {check_path}) for {t.name}"
                 )
 
         torrent_hashes = [_torrent_hash(t) for t in candidates]
