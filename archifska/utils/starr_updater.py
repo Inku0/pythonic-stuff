@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
+from PTN import parse
 from pyarr import RadarrAPI, SonarrAPI
 from rapidfuzz import fuzz
 
@@ -207,6 +208,7 @@ class StarrUpdater:
             Series ID if found, None otherwise
         """
         series_list = self.sonarr_api.get_series()
+        parsed_title = parse(title).get("title")
 
         # Handle empty response
         if not series_list:
@@ -252,6 +254,7 @@ class StarrUpdater:
             Movie ID if found, None otherwise
         """
         movies = self.radarr_api.get_movie()
+        parsed_title = parse(title).get("title")
 
         # Handle empty response
         if not movies:
