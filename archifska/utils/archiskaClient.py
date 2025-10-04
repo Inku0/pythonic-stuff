@@ -25,7 +25,7 @@ from rapidfuzz import fuzz
 
 from utils.logging_setup import logging_setup
 from utils.read_env import read_env
-from utils.StarrUpdater import StarrUpdater
+from utils.starr_updater import StarrUpdater
 
 MEDIA_EXTENSIONS = {
     ".mkv",

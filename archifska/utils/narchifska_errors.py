@@ -1,3 +1,6 @@
+from utils.error_codes import ErrorCode
+
+
 class NarchifskaError(Exception):
     """
     Base structured exception with an error code and contextual metadata.

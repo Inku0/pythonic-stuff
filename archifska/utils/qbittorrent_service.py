@@ -1,16 +1,13 @@
 from __future__ import annotations
 
 import contextlib
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass
-from fnmatch import fnmatch
-from json import dump, load
 from logging import Logger
-from os import link, walk
+from os import walk
 from pathlib import Path
-from shutil import copy2
-from typing import Any, TypedDict
+from time import sleep
+from typing import TypedDict
 
 from PTN import parse
 from qbittorrentapi import Client, TorrentDictionary, TorrentInfoList
@@ -18,19 +15,15 @@ from qbittorrentapi import exceptions as qb_exceptions
 from qbittorrentapi.exceptions import Forbidden403Error, LoginFailed
 from rapidfuzz import fuzz
 
-from utils.ErrorCodes import ErrorCode
+from utils.error_codes import ErrorCode
 from utils.logging_setup import logging_setup
-from utils.mediaExtensions import MEDIA_EXTENSIONS
-from utils.NarchifskaErrors import (
+from utils.narchifska_errors import (
     FileMatchNotFoundError,
     NarchifskaError,
-    RestoreError,
-    SnapshotError,
     TorrentAmbiguityError,
     TorrentNotFoundError,
 )
 from utils.read_env import read_env
-from utils.StarrUpdater import StarrUpdater
 
 
 class TorrentPathInfo(TypedDict, total=True):
@@ -39,32 +32,9 @@ class TorrentPathInfo(TypedDict, total=True):
     rar_lock: bool
 
 
-@dataclass(frozen=True)
-class FileEntry:
+class QBittorrentService:
     """
-    Represents a file in a snapshot.
-
-    Attributes:
-        path: Absolute path to original file at snapshot time
-        inode: Inode number (or 'missing' sentinel) at snapshot time
-        qbit_file: Absolute path to linked qBittorrent-managed file (if resolved)
-    """
-
-    path: str
-    inode: int
-    qbit_file: str | None
-
-
-class NarchifskaClient:
-    """
-    High-level orchestrator for:
-      - qBittorrent inspection and movement
-      - Radarr/Sonarr path synchronization
-      - Filesystem snapshot & restore of media directories
-
-    The client manages connections to qBittorrent WebUI API and Starr services,
-    providing methods to snapshot and restore media directory structures while
-    maintaining references to torrent-managed files.
+    Service class for interacting with qBittorrent Web API and related operations.
     """
 
     def __init__(self) -> None:
@@ -74,7 +44,10 @@ class NarchifskaClient:
 
         # Load configuration
         try:
-            self._load_config(creds)
+            self.host: str = creds["QBIT_HOST"]
+            self.port: str = creds["QBIT_PORT"]
+            self.username: str = creds["QBIT_USERNAME"]
+            self.password: str = creds["QBIT_PASSWORD"]
         except KeyError as e:
             raise NarchifskaError(
                 f".env is missing required key: {e}",
@@ -102,27 +75,6 @@ class NarchifskaClient:
 
         self.all_torrents: list[TorrentDictionary] = []
         self.filtered_torrents: list[TorrentDictionary] = []
-
-    def _load_config(self, creds: dict[str, str]) -> None:
-        """Load configuration from credentials dictionary."""
-        self.host = creds["QBIT_HOST"]
-        self.port = creds["QBIT_PORT"]
-        self.username = creds["QBIT_USERNAME"]
-        self.password = creds["QBIT_PASSWORD"]
-
-        # Initialize Starr services
-        self.radarr_runner = StarrUpdater(
-            host=creds["RADARR_HOST"],
-            port=creds["RADARR_PORT"],
-            api_key=creds["RADARR_API_KEY"],
-            service="radarr",
-        )
-        self.sonarr_runner = StarrUpdater(
-            host=creds["SONARR_HOST"],
-            port=creds["SONARR_PORT"],
-            api_key=creds["SONARR_API_KEY"],
-            service="sonarr",
-        )
 
     # ----------------------
     # Connection Management
@@ -363,294 +315,87 @@ class NarchifskaClient:
 
         return qbit_structure
 
-    @staticmethod
-    def _rar_lock_check(files: Iterable[str]) -> bool:
-        """
-        Check if files represent a multipart rar archive that won't need linking
-
-        Args:
-            files: List of filenames to check
-
-        Returns:
-            bool: True if the files appear to be a RAR archive set
-        """
-        has_rar = any(f.endswith(".rar") for f in files)
-        has_rar_parts = sum(1 for f in files if fnmatch(f, "*.r[0-9][0-9]")) >= 3
-        return has_rar and has_rar_parts
-
-    @staticmethod
-    def _is_media_file(name: str) -> bool:
-        """
-        Check if a file is a recognized media file based on its extension.
-
-        Args:
-            name: Filename to check
-
-        Returns:
-            bool: True if the file has a recognized media extension
-        """
-        return Path(name).suffix.lower() in MEDIA_EXTENSIONS
-
-    @staticmethod
-    def _invert_inode_map(inode_map: dict[str, int]) -> dict[int, str]:
-        """
-        Invert an inode map from path->inode to inode->path.
-
-        Args:
-            inode_map: Mapping of file paths to inode numbers
-
-        Returns:
-            dict: Mapping of inode numbers to file paths
-        """
-        return {
-            inode: file_path for file_path, inode in inode_map.items() if inode != -1
-        }
-
-    @staticmethod
-    def _logged_copy(src: Path, dst: Path, logger: Logger) -> None:
-        """
-        Copy a file and log the operation.
-
-        Args:
-            src: Source path
-            dst: Destination path
-            logger: Logger to record the operation
-        """
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            copy2(src, dst)
-            logger.debug(f"Copied {src} -> {dst}")
-        except PermissionError as e:
-            logger.error(f"Permission denied copying {src} -> {dst}: {e}")
-            raise
-        except FileNotFoundError as e:
-            logger.error(f"File not found copying {src} -> {dst}: {e}")
-            raise
-
-    @staticmethod
-    def _logged_link(src: Path, dst: Path, logger: Logger) -> None:
-        """
-        Create a hard link between files and log the operation.
-        Falls back to copy if linking fails.
-
-        Args:
-            src: Source path
-            dst: Destination path
-            logger: Logger to record the operation
-        """
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            link(src, dst)
-            logger.debug(f"Linked {src} -> {dst}")
-        except OSError as e:
-            logger.warning(f"Hardlink failed ({e}), fallback copy: {src} -> {dst}")
-            NarchifskaClient._logged_copy(src, dst, logger)
-        except Exception as e:
-            logger.warning(
-                f"Unexpected error during linking ({e}), fallback copy: {src} -> {dst}"
-            )
-            NarchifskaClient._logged_copy(src, dst, logger)
-
-    @staticmethod
-    def _link_or_copy(src: Path, dst: Path, logger: Logger) -> None:
-        """
-        Create a hard link between files, falling back to copy if linking fails.
-
-        Args:
-            src: Source path
-            dst: Destination path
-            logger: Logger to record the operation
-        """
-        NarchifskaClient._logged_link(src, dst, logger)
-
     # ----------------------
-    # Snapshot
+    # general torrent methods
     # ----------------------
-    def save_structure(
-        self,
-        original_location: str | Path,
-        save_file: str | Path,
-        torrent_hashes: Sequence[str],  # list of torrent hashes as strings
-    ) -> None:
+    def move_torrent(self, torrent_hashes: list[str], new_location: Path) -> None:
         """
-        Snapshot directory structure for later restoration.
-        Attempts to link files to qBittorrent-managed originals via inode match.
+        Move torrents to a new location and recheck them.
+
+        Args:
+            torrent_hashes: List of torrent hashes to move
+            new_location: New location path
         """
-        if not torrent_hashes:
-            raise SnapshotError("torrent_hashes must be provided")
 
-        original_path = Path(original_location).resolve()
-        if not original_path.exists():
-            raise SnapshotError(
-                "original_location does not exist",
-                original=str(original_path),
-            )
-
-        torrent_hash_dict = self.get_paths_torrents_by_hash_list(torrent_hashes)
-
-        qbit_structure: dict[str, int] = {}
-        for t_hash, info in torrent_hash_dict.items():
-            t_path = info["path"]
-            if not t_path.exists():
-                raise SnapshotError(
-                    "torrent content path missing",
-                    torrent_hash=t_hash,
-                    path=str(t_path),
-                )
-            all_files: list[str] = []
-            for _, _, filenames in walk(t_path):
-                all_files.extend(filenames)
-            rar_lock = self._rar_lock_check(all_files)
-            info["rar_lock"] = rar_lock
-            qbit_structure.update(
-                self.qbit_path_inode_map(qbit_path=t_path, rar_lock=rar_lock)
-            )
-            self.logger.debug(
-                f"hash={t_hash} name={info['torrent'].name} rar_lock={rar_lock}"
-            )
-
-        inode_to_qbit_file = self._invert_inode_map(qbit_structure)
-        self.logger.debug(f"Inode index size={len(inode_to_qbit_file)}")
-
-        structure: dict[str, dict[str, Any]] = {}
-        for root, dirs, filenames in walk(original_path):
-            rpath = Path(root)
-            structure[root] = {"basename": rpath.name, "dirs": dirs, "files": {}}
-            for fname in filenames:
-                fpath = rpath / fname
-                qbit_file: str | None = None
-                inode: int | None = None
+        with self.connection_context():
+            for torrent_hash in torrent_hashes:
                 try:
-                    inode = fpath.stat().st_ino
-                    if inode in inode_to_qbit_file and inode != -1:
-                        qbit_file = inode_to_qbit_file[inode]
-                except FileNotFoundError:
-                    inode = None
-                    self.logger.debug(
-                        f"File got raptured (rip) during snapshot: {fpath}"
+                    self.client.torrents_set_location(new_location, torrent_hash)
+
+                    # periodic poll for move completion
+                    while True:
+                        sleep(15)
+                        torrent = self.client.torrents_info(
+                            None, None, None, None, None, None, torrent_hash
+                        )[0]
+                        if torrent.state not in {"moving", "checkingDL", "checkingUP"}:
+                            break
+
+                    self.logger.info(f"Moved torrent {torrent_hash} aka {torrent.name}")
+
+                    # Recheck after move
+                    self.client.torrents_recheck(torrent_hash)
+
+                    # wait for recheck to complete
+                    while True:
+                        sleep(15)
+                        torrent = self.client.torrents_info(
+                            None, None, None, None, None, None, torrent_hash
+                        )[0]
+                        if torrent.state not in {"moving", "checkingDL", "checkingUP"}:
+                            break
+
+                    self.logger.info(
+                        f"Rechecked torrent {torrent_hash} aka {torrent.name}"
                     )
 
-                entry = FileEntry(
-                    path=str(fpath.resolve()),
-                    inode=inode if inode is not None else -1,
-                    qbit_file=qbit_file,
-                )
-                structure[root]["files"][fname] = asdict(entry)
-
-        save_path = Path(save_file)
-        with save_path.open("w", encoding="utf-8") as fh:
-            dump(structure, fh, indent=2)
-        self.logger.info(f"Snapshot saved to {save_path}")
-
-    # ----------------------
-    # Restore
-    # ----------------------
-    def restore_structure(
-        self,
-        original_location: str | Path,
-        new_location: str | Path,
-        save_file: str | Path,
-        torrent_hashes: list[str],
-        *,
-        verify_missing_media: bool = True,
-        relink_if_missing: bool = True,
-    ) -> None:
-        """
-        Restore a previously saved structure:
-          - Hardlink qbit-managed files where possible.
-          - Copy where linking fails.
-          - Attempt relink if original qbit file vanished but basename exists in current torrents.
-        """
-        if not torrent_hashes:
-            raise RestoreError("torrent_hashes must be provided")
-
-        original_path = Path(original_location).resolve()
-        new_path = Path(new_location).resolve()
-        save_file_path = Path(save_file).resolve()
-
-        if not save_file_path.exists():
-            raise RestoreError("snapshot file not found", save_file=str(save_file_path))
-
-        with save_file_path.open("r", encoding="utf-8") as fh:
-            stored_structure: dict[str, dict[str, Any]] = load(fh)
-
-        torrent_hash_dict = self.get_paths_torrents_by_hash_list(torrent_hashes)
-
-        basename_index: dict[str, str] = {}
-        for info in torrent_hash_dict.values():
-            inode_map = self.qbit_path_inode_map(
-                info["path"], rar_lock=info.get("rar_lock", False)
-            )
-            for absfile in inode_map:
-                basename_index[Path(absfile).name] = absfile
-
-        for base_root, content in stored_structure.items():
-            files: dict[str, dict[str, Any]] = content.get("files", {})
-            base_root_path = Path(base_root)
-
-            try:
-                rel_part = base_root_path.relative_to(original_path)
-            except ValueError:
-                # Fallback: treat as absolute mismatch
-                rel_part = base_root_path.name
-
-            target_root = new_path / rel_part
-            target_root.mkdir(parents=True, exist_ok=True)
-
-            for fname, finfo in files.items():
-                original_file_path = Path(finfo["path"])
-                qbit_file_saved: str | None = finfo.get("qbit_file")
-                target_file_path = target_root / fname
-
-                if qbit_file_saved:
-                    qbit_candidate = Path(qbit_file_saved)
-                    if not qbit_candidate.exists() and relink_if_missing:
-                        remap = basename_index.get(qbit_candidate.name)
-                        if remap:
-                            self.logger.info(
-                                f"Relinking {qbit_candidate.name} -> {remap}"
-                            )
-                            qbit_candidate = Path(remap)
-
-                    if qbit_candidate.exists():
-                        self._link_or_copy(
-                            qbit_candidate, target_file_path, self.logger
-                        )
-                        continue
-                    else:
-                        self.logger.warning(
-                            f"Stored qbit file missing and not relinked: {qbit_candidate}"
-                        )
-
-                # Handle unlinked media
-                if self._is_media_file(fname) and verify_missing_media:
-                    try:
-                        response = (
-                            input(
-                                f"Missing linkage for media {fname}. Continue? (y/N): "
-                            )
-                            .strip()
-                            .lower()
-                        )
-                    except EOFError:
-                        response = "y"
-                    if response not in {"y", "yes"}:
-                        raise RestoreError(
-                            "aborted due to missing media linkage", file=fname
-                        )
-
-                if original_file_path.exists():
-                    self._logged_copy(original_file_path, target_file_path, self.logger)
-                else:
+                except Exception as move_exception:
                     self.logger.error(
-                        f"Original file missing; cannot restore {target_file_path}"
+                        f"Failed to move/recheck torrent {torrent_hash}: {move_exception}"
                     )
 
-        self.logger.info(f"Restore completed: {new_path}")
+    def get_candidates(self, category: str | None = None) -> list[TorrentDictionary]:
+        if category is not None:
+            self.logger.info(f"Getting candidates for category {category}")
+            self.list_torrents(category=category)
+        else:
+            self.list_torrents()
 
-    # ----------------------
-    # Torrent inspection
-    # ----------------------
+        prime_candidate = next(
+            torrent
+            for torrent in self.filtered_torrents
+            if "megafarm" not in torrent.content_path and "skip" not in torrent.tags
+        )
+
+        self.logger.info(
+            f"Found {len(self.filtered_torrents)} candidates, prime candidate is {prime_candidate.name} "
+            + f"with path {prime_candidate.content_path} and age {prime_candidate.completion_on}"
+        )
+        self.logger.debug(
+            f"All candidates: {[torrent.name for torrent in self.filtered_torrents]}"
+        )
+
+        torrents = (
+            self.check_for_other_seasons(prime_candidate)
+            if prime_candidate.category == "tv"
+            else [prime_candidate]
+        )
+        self.logger.debug(
+            f"After season check, {len(torrents)} candidates left: {[torrent.name for torrent in torrents]}"
+        )
+
+        return torrents
+
     def get_inodes_from_hash(self, torrent_hash: str) -> dict[str, int]:
         results = self.client.torrents_info(
             None, None, None, None, None, None, torrent_hash
@@ -689,6 +434,7 @@ class NarchifskaClient:
     def check_similarity(
         self, given_torrent: TorrentDictionary, other_torrent: TorrentDictionary
     ) -> bool:
+        # should this instead get media file paths from *arr, then find the corresponding torrents?
         ratio = fuzz.ratio(given_torrent.name, other_torrent.name)
         try:
             given_title = parse(given_torrent.name).get("title")
@@ -699,3 +445,63 @@ class NarchifskaClient:
             double_check_ratio: int = fuzz.ratio(given_title, other_title)
             return double_check_ratio > 90 and given_title == other_title
         return ratio > 45 and given_title == other_title
+
+    def get_hash(self, file_name: str) -> str:
+        """
+        Find a torrent hash by partial name match.
+
+        Args:
+            file_name: Substring to match against torrent names
+
+        Returns:
+            str: The hash of the matched torrent
+
+        Raises:
+            TorrentNotFoundError: If no torrent matches the file_name
+        """
+        torrents: TorrentInfoList = self.client.torrents_info()
+        for torrent in torrents:
+            if file_name in torrent.name:
+                return torrent.hash
+        from utils.narchifska_errors import TorrentNotFoundError
+
+        raise TorrentNotFoundError(f"torrent containing '{file_name}' not found")
+
+    def check_for_other_seasons(
+        self, given_torrent: TorrentDictionary
+    ) -> list[TorrentDictionary]:
+        """
+        Check for other seasons of the same TV show.
+
+        Args:
+            given_torrent: The torrent to check for other seasons
+
+        Returns:
+            list[TorrentDictionary]: List of torrents that appear to be seasons of the same show
+        """
+        if given_torrent.category != "tv":
+            self.logger.info("Not a TV show, skipping season check")
+            return [given_torrent]
+
+        seasons: list[TorrentDictionary] = []
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        with ThreadPoolExecutor() as pool:
+            futures = {
+                pool.submit(self.check_similarity, given_torrent, torrent): torrent
+                for torrent in self.filtered_torrents
+            }
+            for future in as_completed(futures):
+                entry = futures[future]
+                try:
+                    if future.result():
+                        seasons.append(entry)
+                except Exception as e:
+                    self.logger.error(f"Error checking similarity for {entry}: {e}")
+
+        actual_seasons_amount = self.season_counter(seasons)
+        self.logger.debug(
+            f"Found {actual_seasons_amount} seasons for {given_torrent.name}: {seasons}"
+        )
+
+        return seasons
