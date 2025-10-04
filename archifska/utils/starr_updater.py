@@ -97,7 +97,6 @@ class StarrUpdater:
 
         Args:
             title: Media title to search for
-            ignore_errors: If True, suppress error logging on failures
 
         Returns:
             Media ID if found, None otherwise
@@ -203,106 +202,88 @@ class StarrUpdater:
 
         Args:
             title: Series title to search for
-            ignore_errors: If True, suppress error logging on failures
 
         Returns:
             Series ID if found, None otherwise
         """
-        try:
-            series_list = self.sonarr_api.get_series()
+        series_list = self.sonarr_api.get_series()
 
-            # Handle empty response
-            if not series_list:
-                raise ValueError("no series found in Sonarr library")
+        # Handle empty response
+        if not series_list:
+            raise ValueError("no series found in Sonarr library")
 
-            best_id = None
-            best_score = -1
+        best_id = None
+        best_score = -1
 
-            for show in series_list:
-                # Get primary title score
-                primary_score = fuzz.ratio(title, show.get("title"))
+        for show in series_list:
+            # Get primary title score
+            primary_score = fuzz.ratio(title, show.get("title"))
 
-                # Get scores for alternate titles
-                alt_scores = [
-                    fuzz.ratio(title, t.get("title"))
-                    for t in show.get("alternateTitles")
-                ]
+            # Get scores for alternate titles
+            alt_scores = [
+                fuzz.ratio(title, t.get("title")) for t in show.get("alternateTitles")
+            ]
 
-                # Use the highest score among primary and alternates
-                max_alt_score = max(alt_scores, default=0)
-                score = max(primary_score, max_alt_score)
+            # Use the highest score among primary and alternates
+            max_alt_score = max(alt_scores, default=0)
+            score = max(primary_score, max_alt_score)
 
-                if score > best_score and score >= FUZZ_THRESHOLD:
-                    best_score = score
-                    best_id = show.get("id")
+            if score > best_score and score >= FUZZ_THRESHOLD:
+                best_score = score
+                best_id = show.get("id")
 
-            if best_id is None:
-                raise ValueError(f"series '{title}' not found in Sonarr")
-            else:
-                self.logger.debug(
-                    f"Best Sonarr match for '{title}': id={best_id}, score={best_score}"
-                )
+        if best_id is None:
+            raise ValueError(f"series '{title}' not found in Sonarr")
+        else:
+            self.logger.debug(
+                f"Best Sonarr match for '{title}': id={best_id}, score={best_score}"
+            )
 
-            return best_id
+        return best_id
 
-        except Exception as e:
-            if not ignore_errors:
-                self.logger.error(f"Failed to query Sonarr: {e}")
-            return None
-
-    def _find_radarr_id_by_title(
-        self, title: str, ignore_errors: bool
-    ) -> MediaID | None:
+    def _find_radarr_id_by_title(self, title: str) -> MediaID | None:
         """
         Find Radarr movie ID by title using fuzzy matching.
 
         Args:
             title: Movie title to search for
-            ignore_errors: If True, suppress error logging on failures
 
         Returns:
             Movie ID if found, None otherwise
         """
-        try:
-            movies = self.radarr_api.get_movie()
+        movies = self.radarr_api.get_movie()
 
-            # Handle empty response
-            if not movies:
-                raise ValueError("no movies found in Radarr library")
+        # Handle empty response
+        if not movies:
+            raise ValueError("no movies found in Radarr library")
 
-            best_id = None
-            best_score = -1
+        best_id = None
+        best_score = -1
 
-            for movie in movies:
-                # Check original title, current title, and alternate titles
-                scores = [
-                    fuzz.ratio(title, movie.get("originalTitle")),
-                    fuzz.ratio(title, movie.get("title")),
-                ]
+        for movie in movies:
+            # Check original title, current title, and alternate titles
+            scores = [
+                fuzz.ratio(title, movie.get("originalTitle")),
+                fuzz.ratio(title, movie.get("title")),
+            ]
 
-                # Add scores for alternate titles
-                alt_scores = [
-                    fuzz.ratio(title, t.get("title"))
-                    for t in movie.get("alternateTitles")
-                ]
+            # Add scores for alternate titles
+            alt_scores = [
+                fuzz.ratio(title, t.get("title")) for t in movie.get("alternateTitles")
+            ]
 
-                # Find the best score among all title variants
-                score = max([*scores, *alt_scores])
+            # Find the best score among all title variants
+            score = max([*scores, *alt_scores])
 
-                if score > best_score and score >= FUZZ_THRESHOLD:
-                    best_score = score
-                    best_id = movie.get("id")
+            if score > best_score and score >= FUZZ_THRESHOLD:
+                best_score = score
+                best_id = movie.get("id")
 
-            if best_id is None and not ignore_errors:
-                self.logger.error(f"Media '{title}' not found in Radarr")
-            else:
-                self.logger.debug(
-                    f"Best Radarr match for '{title}': id={best_id}, score={best_score}"
-                )
+        if best_id is None:
+            raise ValueError(f"movie '{title}' not found in Radarr")
+        else:
+            self.logger.debug(
+                f"Best Radarr match for '{title}': id={best_id}, score={best_score}"
+            )
 
-            return best_id
-
-        except Exception as e:
-            if not ignore_errors:
-                self.logger.error(f"Failed to query Radarr: {e}")
-            return None
+        return best_id
