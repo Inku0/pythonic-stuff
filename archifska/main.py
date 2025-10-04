@@ -111,6 +111,7 @@ def all_in_one(dry_run: bool = False, save_file: str = "struc.json") -> None:
                 f"Would notify *arr to update path: media_id={media_id} -> {destination_root}"
             )
             narchifska.qbit_service.logger.info("----- DRY RUN COMPLETE -----")
+            narchifska.starr_updater.find_other_seasons_files(media_id)
             return
 
         # Move torrents to the new torrents location for the category

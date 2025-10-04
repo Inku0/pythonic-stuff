@@ -92,6 +92,22 @@ class StarrUpdater:
     # ---------------
     # Common helpers
     # ---------------
+    def find_other_seasons_files(self, media_id: MediaID) -> list[Path]:
+        """
+        Find all files belonging to other seasons of the same series.
+
+        Args:
+            media_id: ID of the media item
+
+        Returns:
+            List of Paths to files from other seasons
+        """
+
+        episodes_info = self.sonarr_api.get_episode_file(id_=media_id, series=True)
+        print(episodes_info)
+
+        return episodes_info
+
     def find_id_by_title(self, title: str, service: ServiceType) -> MediaID | None:
         """
         Find media ID by title using fuzzy matching.
