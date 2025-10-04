@@ -219,11 +219,12 @@ class StarrUpdater:
 
         for show in series_list:
             # Get primary title score
-            primary_score = fuzz.ratio(title, show.get("title"))
+            primary_score = fuzz.ratio(parsed_title, show.get("title"))
 
             # Get scores for alternate titles
             alt_scores = [
-                fuzz.ratio(title, t.get("title")) for t in show.get("alternateTitles")
+                fuzz.ratio(parsed_title, t.get("title"))
+                for t in show.get("alternateTitles")
             ]
 
             # Use the highest score among primary and alternates
@@ -235,10 +236,12 @@ class StarrUpdater:
                 best_id = show.get("id")
 
         if best_id is None:
-            raise ValueError(f"series '{title}' not found in Sonarr")
+            raise ValueError(
+                f"series '{title}' parsed as '{parsed_title}' not found in Sonarr"
+            )
         else:
             self.logger.debug(
-                f"Best Sonarr match for '{title}': id={best_id}, score={best_score}"
+                f"Best Sonarr match for '{title}' parsed as '{parsed_title}': id={best_id}, score={best_score}"
             )
 
         return best_id
@@ -266,13 +269,14 @@ class StarrUpdater:
         for movie in movies:
             # Check original title, current title, and alternate titles
             scores = [
-                fuzz.ratio(title, movie.get("originalTitle")),
-                fuzz.ratio(title, movie.get("title")),
+                fuzz.ratio(parsed_title, movie.get("originalTitle")),
+                fuzz.ratio(parsed_title, movie.get("title")),
             ]
 
             # Add scores for alternate titles
             alt_scores = [
-                fuzz.ratio(title, t.get("title")) for t in movie.get("alternateTitles")
+                fuzz.ratio(parsed_title, t.get("title"))
+                for t in movie.get("alternateTitles")
             ]
 
             # Find the best score among all title variants
@@ -283,10 +287,12 @@ class StarrUpdater:
                 best_id = movie.get("id")
 
         if best_id is None:
-            raise ValueError(f"movie '{title}' not found in Radarr")
+            raise ValueError(
+                f"movie '{title}' parsed as '{parsed_title}' not found in Radarr"
+            )
         else:
             self.logger.debug(
-                f"Best Radarr match for '{title}': id={best_id}, score={best_score}"
+                f"Best Radarr match for '{title}' parsed as '{parsed_title}': id={best_id}, score={best_score}"
             )
 
         return best_id
