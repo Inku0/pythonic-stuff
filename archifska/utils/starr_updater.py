@@ -218,6 +218,14 @@ class StarrUpdater:
         best_score = -1
 
         for show in series_list:
+            # Skip entries already located on megafarm
+            show_path = show.get("path")
+            if "megafarm" in show_path:
+                self.logger.debug(
+                    f"Skipping Sonarr entry id={show.get('id')} with path '{show_path}' (already on megafarm)"
+                )
+                continue
+
             # Get primary title score
             primary_score = fuzz.ratio(parsed_title, show.get("title"))
 
@@ -267,6 +275,14 @@ class StarrUpdater:
         best_score = -1
 
         for movie in movies:
+            # Skip entries already located on megafarm
+            movie_path = movie.get("path")
+            if "megafarm" in movie_path:
+                self.logger.debug(
+                    f"Skipping Radarr entry id={movie.get('id')} with path '{movie_path}' (already on megafarm)"
+                )
+                continue
+
             # Check original title, current title, and alternate titles
             scores = [
                 fuzz.ratio(parsed_title, movie.get("originalTitle")),
