@@ -292,6 +292,7 @@ class FilesystemService:
             for absfile in inode_map:
                 basename_index[Path(absfile).name] = absfile
 
+        skip_media_prompts = False
         for base_root, content in stored_structure.items():
             files: dict[str, dict[str, Any]] = content.get("files", {})
             base_root_path = Path(base_root)
@@ -352,18 +353,24 @@ class FilesystemService:
                         )
 
                 # Handle unlinked media
-                if self._is_media_file(fname) and verify_missing_media:
+                if (
+                    self._is_media_file(fname)
+                    and verify_missing_media
+                    and not skip_media_prompts
+                ):
                     try:
                         response = (
                             input(
-                                f"Missing linkage for media {fname}. Continue? (y/N): "
+                                f"Missing linkage for media {fname}. Continue? (y/N/a): "
                             )
                             .strip()
                             .lower()
                         )
                     except EOFError:
                         response = "y"
-                    if response not in {"y", "yes"}:
+                    if response in {"a", "all"}:
+                        skip_media_prompts = True
+                    elif response not in {"y", "yes"}:
                         raise RestoreError(
                             "aborted due to missing media linkage", file=fname
                         )
