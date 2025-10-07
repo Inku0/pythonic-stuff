@@ -466,7 +466,7 @@ class QBittorrentService:
                 for root, _, files in walk(torrent.content_path):
                     if file.name in files:
                         self.logger.debug(
-                            f"Fuzzy matched {file_name} to {torrent.name} with ratio {fuzz.ratio(file.name, torrent.name)}"
+                            f"Fuzzy matched {file.name} to {torrent.name} with ratio {fuzz.ratio(file.name, torrent.name)}"
                         )
                 return torrent.hash
         from utils.narchifska_errors import TorrentNotFoundError
