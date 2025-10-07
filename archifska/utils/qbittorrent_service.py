@@ -469,7 +469,6 @@ class QBittorrentService:
                             f"Fuzzy matched {file.name} to {torrent.name} with ratio {fuzz.ratio(file.name, torrent.name)}"
                         )
                 return torrent.hash
-        from utils.narchifska_errors import TorrentNotFoundError
 
         raise TorrentNotFoundError(f"torrent containing '{file.name}' not found")
 
