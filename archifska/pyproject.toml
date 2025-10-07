@@ -1,6 +1,6 @@
 [project]
 name = "archifska"
-version = "0.1.0"
+version = "0.2.0"
 description = "media management for a system with two mountpoints, works with qbittorrent+radarr/sonarr"
 readme = "README.md"
 requires-python = ">=3.13"
