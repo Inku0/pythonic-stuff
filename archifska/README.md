@@ -10,7 +10,6 @@ It does this by
   7. notifying Radarr/Sonarr about the new location
 
 Configuration is done in a `.env` file. The file must include the following:
-```
 ```.env
 SONARR_API_KEY
 SONARR_HOST
