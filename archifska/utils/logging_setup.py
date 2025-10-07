@@ -8,7 +8,7 @@ def logging_setup():
         str_logging_level = str_logging_level.upper()
         if str_logging_level == "DEBUG":
             logging_level = DEBUG
-        if str_logging_level == "INFO":
+        elif str_logging_level == "INFO":
             logging_level = INFO
     except KeyError:
         print("LOGGING_LEVEL wasn't found in .env")
