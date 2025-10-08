@@ -26,24 +26,48 @@ class RBClient:
         self.full_url: str = f"{self.schema}://{self.base_url}:{self.port}"
 
     def get_status(self):
-        status = httpx.get(
-            f"{self.full_url}/status", auth=(self.username, self.password)
-        )
-        return status.json()
+        try:
+            response = httpx.get(
+                f"{self.full_url}/status", auth=(self.username, self.password)
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.RequestError as e:
+            return {"error": f"Network error: {str(e)}"}
+        except httpx.HTTPStatusError as e:
+            return {"error": f"HTTP error: {str(e)}"}
+        except ValueError as e:
+            return {"error": f"Invalid JSON response: {str(e)}"}
 
     def pause(self):
         print("pausing RainbowMiner...")
-        result = httpx.get(
-            f"{self.full_url}/pause?action=set", auth=(self.username, self.password)
-        )
-        return result.json()
+        try:
+            response = httpx.get(
+                f"{self.full_url}/pause?action=set", auth=(self.username, self.password)
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.RequestError as e:
+            return {"error": f"Network error: {str(e)}"}
+        except httpx.HTTPStatusError as e:
+            return {"error": f"HTTP error: {str(e)}"}
+        except ValueError as e:
+            return {"error": f"Invalid JSON response: {str(e)}"}
 
     def resume(self):
         print("resuming RainbowMiner...")
-        result = httpx.get(
-            f"{self.full_url}/pause?action=reset", auth=(self.username, self.password)
-        )
-        return result.json()
+        try:
+            response = httpx.get(
+                f"{self.full_url}/pause?action=reset", auth=(self.username, self.password)
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.RequestError as e:
+            return {"error": f"Network error: {str(e)}"}
+        except httpx.HTTPStatusError as e:
+            return {"error": f"HTTP error: {str(e)}"}
+        except ValueError as e:
+            return {"error": f"Invalid JSON response: {str(e)}"}
 
     def process_post_request(self, request, *args, **kwargs) -> None:
         # print(
