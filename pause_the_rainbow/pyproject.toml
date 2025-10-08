@@ -1,0 +1,9 @@
+[project]
+name = "pause-the-rainbow"
+version = "0.1.0"
+description = "get webhook from jellyfin on playback activity, then pause RainbowMiner until playback stops"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "webhook-listener>=1.2.0",
+]
