@@ -9,15 +9,21 @@ from utils.read_env import read_env
 class RBClient:
     def __init__(self) -> None:
         config = read_env()
-        try:
-            self.base_url: str = config.get("RB_URL")
-            self.schema: str = config.get("RB_SCHEMA", "http")
-            self.port: str = config.get("RB_PORT", "4000")
-            self.username: str = config.get("RB_USERNAME")
-            self.password: str = config.get("RB_PASSWORD")
-            self.full_url: str = f"{self.schema}://{self.base_url}:{self.port}"
-        except KeyError as e:
-            raise ValueError(f"Missing required environment variable: {e}")
+        self.base_url: str = config.get("RB_URL")
+        self.schema: str = config.get("RB_SCHEMA", "http")
+        self.port: str = config.get("RB_PORT", "4000")
+        self.username: str = config.get("RB_USERNAME")
+        self.password: str = config.get("RB_PASSWORD")
+        missing_vars = []
+        if self.base_url is None:
+            missing_vars.append("RB_URL")
+        if self.username is None:
+            missing_vars.append("RB_USERNAME")
+        if self.password is None:
+            missing_vars.append("RB_PASSWORD")
+        if missing_vars:
+            raise ValueError(f"Missing required environment variable(s): {', '.join(missing_vars)}")
+        self.full_url: str = f"{self.schema}://{self.base_url}:{self.port}"
 
     def get_status(self):
         status = httpx.get(
