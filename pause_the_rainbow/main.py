@@ -1,10 +1,11 @@
 from time import sleep
 
-from utils.webhook_watcher import start_webhook_watcher
+from utils.rainbow_pause import RBClient
 
 
 def main():
-    start_webhook_watcher()
+    RainbowMiner = RBClient()
+    RainbowMiner.start_webhook_watcher()
     while True:
         print("Still alive...")
         sleep(300)
